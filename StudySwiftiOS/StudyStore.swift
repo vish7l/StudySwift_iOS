@@ -8,17 +8,23 @@ import Observation
 
 @Observable
 final class StudyStore {
-    private static let storageKey = "studyBlocks.v1"
+    private static let blocksKey = "studyBlocks.v1"
+    private static let plantsKey = "gardenPlants.v1"
 
     var blocks: [TimeBlock] = [] {
-        didSet { save() }
+        didSet { saveBlocks() }
+    }
+
+    var plants: [GardenPlant] = [] {
+        didSet { savePlants() }
     }
 
     init() {
-        load()
+        loadBlocks()
+        loadPlants()
     }
 
-    // MARK: - Mutations
+    // MARK: - Block mutations
 
     func add(_ block: TimeBlock) {
         blocks.append(block)
@@ -30,9 +36,17 @@ final class StudyStore {
         blocks.removeAll { idsToRemove.contains($0.id) }
     }
 
-    func toggleCompleted(_ block: TimeBlock) {
-        guard let idx = blocks.firstIndex(where: { $0.id == block.id }) else { return }
+    /// Toggles completion state. Returns a new GardenPlant when the block
+    /// transitions from incomplete → complete; returns nil otherwise.
+    @discardableResult
+    func toggleCompleted(_ block: TimeBlock) -> GardenPlant? {
+        guard let idx = blocks.firstIndex(where: { $0.id == block.id }) else { return nil }
+        let wasCompleted = blocks[idx].isCompleted
         blocks[idx].isCompleted.toggle()
+        guard !wasCompleted else { return nil }
+        let plant = GardenPlant(from: blocks[idx])
+        plants.append(plant)
+        return plant
     }
 
     // MARK: - Queries
@@ -83,21 +97,29 @@ final class StudyStore {
 
     // MARK: - Persistence
 
-    private func save() {
-        do {
-            let data = try JSONEncoder().encode(blocks)
-            UserDefaults.standard.set(data, forKey: Self.storageKey)
-        } catch {
-            print("StudyStore save failed: \(error)")
+    private func saveBlocks() {
+        if let data = try? JSONEncoder().encode(blocks) {
+            UserDefaults.standard.set(data, forKey: Self.blocksKey)
         }
     }
 
-    private func load() {
-        guard let data = UserDefaults.standard.data(forKey: Self.storageKey) else { return }
-        do {
-            blocks = try JSONDecoder().decode([TimeBlock].self, from: data)
-        } catch {
-            print("StudyStore load failed: \(error)")
+    private func loadBlocks() {
+        guard let data = UserDefaults.standard.data(forKey: Self.blocksKey),
+              let decoded = try? JSONDecoder().decode([TimeBlock].self, from: data)
+        else { return }
+        blocks = decoded
+    }
+
+    private func savePlants() {
+        if let data = try? JSONEncoder().encode(plants) {
+            UserDefaults.standard.set(data, forKey: Self.plantsKey)
         }
+    }
+
+    private func loadPlants() {
+        guard let data = UserDefaults.standard.data(forKey: Self.plantsKey),
+              let decoded = try? JSONDecoder().decode([GardenPlant].self, from: data)
+        else { return }
+        plants = decoded
     }
 }
